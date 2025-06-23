@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kipawa Sports Academy</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+    <link rel="manifest" href="manifest.json">
+    <link rel="shortcut icon" href="kipawalogo.png" type="image/x-icon">
+    <link rel="icon" type="image/png" sizes="192x192" href="kipawalogo.png">
+    <link rel="icon" type="image/png" sizes="512x512" href="kipawalogo.png">
+    <style>
+        body { background: #f8f9fa; }
+        .table-responsive { max-height: 70vh; }
+        th, td { text-align: center; vertical-align: middle; }
+        .coach-section { background: #fff; padding: 1.5rem; border-radius: 8px; margin-bottom: 1.5rem; box-shadow: 0 2px 8px #0001; }
+        .add-btn { min-width: 120px; }
+        .checkbox-lg {
+            width: 1.5em;
+            height: 1.5em;
+        }
+    </style>
+</head>
+<body>
+<nav class="navbar navbar-expand-lg navbar-dark bg-primary mb-4">
+  <div class="container-fluid">
+    <a class="navbar-brand" href="#"><img src="kipawalogo.png" width="70px"></a>
+    <button class="navbar-toggler" type="button" id="navbarToggler" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+      <span class="navbar-toggler-icon"></span>
+    </button>
+    <div class="collapse navbar-collapse" id="navbarNav">
+      <ul class="navbar-nav me-auto mb-2 mb-lg-0" id="registerList">
+        <!-- Register tabs will be inserted here -->
+      </ul>
+      <button class="btn btn-light me-2" id="addRegisterBtn">Add Register</button>
+      <button class="btn btn-warning" id="downloadAllBtn">Download All as ZIP</button>
+    </div>
+  </div>
+</nav>
+<div class="container py-4">
+    <h2 class="mb-4 text-center" id="registerTitle">Student Attendance Register</h2>
+    <div class="coach-section">
+        <form id="coachForm" class="row g-3">
+            <div class="col-md-4">
+                <label for="coachName" class="form-label">Coach Name</label>
+                <input type="text" class="form-control" id="coachName" required>
+            </div>
+            <div class="col-md-4">
+                <label for="institution" class="form-label">Institution</label>
+                <input type="text" class="form-control" id="institution" required>
+            </div>
+            <div class="col-md-4">
+                <label for="activity" class="form-label">Activity</label>
+                <input type="text" class="form-control" id="activity" required>
+            </div>
+        </form>
+    </div>
+    <div class="mb-3 d-flex justify-content-between align-items-center">
+        <button class="btn btn-success add-btn" id="addStudentBtn">Add Student</button>
+        <button class="btn btn-primary" id="downloadPdfBtn">Download as PDF</button>
+    </div>
+    <div class="table-responsive">
+        <table class="table table-bordered align-middle" id="registerTable">
+            <thead class="table-light">
+                <tr>
+                    <th style="min-width: 180px;">Student Name</th>
+                    <th>Week 1</th>
+                    <th>Week 2</th>
+                    <th>Week 3</th>
+                    <th>Week 4</th>
+                    <th>Week 5</th>
+                    <th>Week 6</th>
+                    <th>Week 7</th>
+                    <th>Week 8</th>
+                    <th>Week 9</th>
+                    <th>Week 10</th>
+                    <th>Week 11</th>
+                    <th>Week 12</th>
+                    <th>Week 13</th>
+                    <th>Week 14</th>
+                </tr>
+            </thead>
+            <tbody id="registerBody">
+                <!-- Student rows will be inserted here -->
+            </tbody>
+        </table>
+    </div>
+</div>
+<script>
+const MAX_STUDENTS = 20;
+const WEEKS = 14;
+
+// Multi-register support
+function getAllRegisters() {
+    return JSON.parse(localStorage.getItem('allRegisters')) || [];
+}
+function saveAllRegisters(registers) {
+    localStorage.setItem('allRegisters', JSON.stringify(registers));
+}
+function getCurrentRegisterIndex() {
+    return parseInt(localStorage.getItem('currentRegisterIndex') || '0', 10);
+}
+function setCurrentRegisterIndex(idx) {
+    localStorage.setItem('currentRegisterIndex', idx);
+}
+function getCurrentRegister() {
+    const registers = getAllRegisters();
+    const idx = getCurrentRegisterIndex();
+    return registers[idx] || null;
+}
+function updateCurrentRegister(data) {
+    const registers = getAllRegisters();
+    const idx = getCurrentRegisterIndex();
+    registers[idx] = data;
+    saveAllRegisters(registers);
+}
+function addNewRegister() {
+    let institution = prompt('Enter the institution name for this register:');
+    if (!institution) institution = `Institution ${getAllRegisters().length + 1}`;
+    const registers = getAllRegisters();
+    registers.push({
+        name: institution,
+        students: Array.from({length: MAX_STUDENTS}, () => ({ name: '', attendance: Array(WEEKS).fill(false) })),
+        coach: { name: '', institution: institution, activity: '' }
+    });
+    saveAllRegisters(registers);
+    setCurrentRegisterIndex(registers.length - 1);
+    renderNavBar();
+    renderRegister();
+}
+function switchRegister(idx) {
+    setCurrentRegisterIndex(idx);
+    renderNavBar();
+    renderRegister();
+}
+function renderNavBar() {
+    const registers = getAllRegisters();
+    const idx = getCurrentRegisterIndex();
+    const ul = document.getElementById('registerList');
+    ul.innerHTML = '';
+    registers.forEach((reg, i) => {
+        const li = document.createElement('li');
+        li.className = 'nav-item';
+        const a = document.createElement('a');
+        a.className = 'nav-link' + (i === idx ? ' active' : '');
+        a.href = '#';
+        a.textContent = reg.coach.institution || reg.name || `Institution ${i+1}`;
+        a.onclick = (e) => { e.preventDefault(); switchRegister(i); };
+        li.appendChild(a);
+        ul.appendChild(li);
+    });
+}
+function renderRegister() {
+    const data = getCurrentRegister();
+    if (!data) return;
+    document.getElementById('registerTitle').textContent = data.coach.institution || data.name || 'Student Attendance Register';
+    // Coach section
+    document.getElementById('coachName').value = data.coach.name;
+    document.getElementById('institution').value = data.coach.institution;
+    document.getElementById('activity').value = data.coach.activity;
+    // Table
+    const tbody = document.getElementById('registerBody');
+    tbody.innerHTML = '';
+    data.students.forEach((student, idx) => {
+        const tr = document.createElement('tr');
+        // Student name input
+        const nameTd = document.createElement('td');
+        const nameInput = document.createElement('input');
+        nameInput.type = 'text';
+        nameInput.className = 'form-control';
+        nameInput.value = student.name;
+        nameInput.placeholder = `Student ${idx + 1}`;
+        nameInput.onchange = (e) => {
+            data.students[idx].name = e.target.value;
+            updateCurrentRegister(data);
+        };
+        nameTd.appendChild(nameInput);
+        tr.appendChild(nameTd);
+        // Attendance checkboxes
+        for (let w = 0; w < WEEKS; w++) {
+            const td = document.createElement('td');
+            const cb = document.createElement('input');
+            cb.type = 'checkbox';
+            cb.className = 'checkbox-lg';
+            cb.checked = !!student.attendance[w];
+            cb.onchange = (e) => {
+                data.students[idx].attendance[w] = e.target.checked;
+                updateCurrentRegister(data);
+            };
+            td.appendChild(cb);
+            tr.appendChild(td);
+        }
+        tbody.appendChild(tr);
+    });
+}
+document.getElementById('addRegisterBtn').onclick = addNewRegister;
+document.getElementById('addStudentBtn').onclick = function() {
+    const data = getCurrentRegister();
+    data.students.push({ name: '', attendance: Array(WEEKS).fill(false) });
+    updateCurrentRegister(data);
+    renderRegister();
+};
+document.getElementById('coachForm').oninput = function() {
+    const data = getCurrentRegister();
+    data.coach.name = document.getElementById('coachName').value;
+    data.coach.institution = document.getElementById('institution').value;
+    data.coach.activity = document.getElementById('activity').value;
+    updateCurrentRegister(data);
+};
+function downloadPDF(data, cb, useInstitutionName) {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' });
+    let y = 40;
+    doc.setFontSize(16);
+    doc.text(data.name || data.coach.institution || 'Student Attendance Register', 40, y);
+    y += 30;
+    doc.setFontSize(12);
+    doc.text(`Coach: ${data.coach.name || ''}`, 40, y);
+    doc.text(`Institution: ${data.coach.institution || ''}`, 250, y);
+    doc.text(`Activity: ${data.coach.activity || ''}`, 500, y);
+    y += 30;
+    // Calculate weekly pay and total pay
+    let weeklyPays = [];
+    let totalPay = 0;
+    for (let w = 0; w < WEEKS; w++) {
+        const presentCount = data.students.filter(s => s.attendance[w]).length;
+        let weekPay = 0;
+        if (presentCount > 0) {
+            weekPay = calculateCoachEarning(presentCount);
+        }
+        weeklyPays.push(weekPay);
+        totalPay += weekPay;
+    }
+    // Weekly pay table
+    doc.setFontSize(12);
+    doc.text('Weekly Pay:', 40, y);
+    y += 8;
+    doc.autoTable({
+        head: [['Week', 'Pay (KES)']],
+        body: weeklyPays.map((p, i) => [`Week ${i+1}`, p]),
+        startY: y,
+        theme: 'grid',
+        styles: { fontSize: 10, cellPadding: 2 },
+        headStyles: { fillColor: [220, 220, 220] },
+        margin: { left: 40, right: 40 },
+        tableWidth: 'auto',
+    });
+    y = doc.lastAutoTable.finalY + 8;
+    doc.text(`Total Pay: KES ${totalPay}`, 40, y);
+    y += 16;
+    const headers = ['Position', 'Student Name', ...Array.from({length: WEEKS}, (_, i) => `W${i+1}`)];
+    const rows = data.students.map((s, idx) => [idx + 1, s.name || '', ...s.attendance.map(a => a ? '✔' : '')]);
+    doc.autoTable({
+        head: [headers],
+        body: rows,
+        startY: y,
+        theme: 'grid',
+        styles: { fontSize: 9, cellPadding: 2 },
+        headStyles: { fillColor: [220, 220, 220] },
+        bodyStyles: { textColor: [0, 0, 0] },
+        didParseCell: function (data) {
+            if (data.cell.raw === '✔') {
+                data.cell.styles.textColor = [0, 128, 0];
+                data.cell.styles.fontStyle = 'bold';
+            }
+        },
+        margin: { left: 40, right: 40 },
+        tableWidth: 'auto',
+    });
+    const filename = useInstitutionName ? `${data.coach.institution || data.name || 'student_register'}.pdf` : `${data.name || data.coach.institution || 'student_register'}.pdf`;
+    doc.save(filename);
+    if (cb) cb(doc);
+}
+document.getElementById('downloadPdfBtn').onclick = function() {
+    const data = getCurrentRegister();
+    // Use institution name as filename
+    downloadPDF(data, null, true);
+};
+// Helper to calculate coach earning based on number of students (per session)
+function calculateCoachEarning(studentCount) {
+    if (studentCount >= 0 && studentCount <= 10) return 400;
+    if (studentCount >= 11 && studentCount <= 14) return 600;
+    if (studentCount >= 15 && studentCount <= 20) return 800;
+    if (studentCount >= 21 && studentCount <= 30) return 1000;
+    if (studentCount > 30) return 1500;
+    return 0;
+}
+document.getElementById('downloadAllBtn').onclick = function() {
+    const registers = getAllRegisters();
+    generateMergedPDF(registers, function(mergedBlob) {
+        saveAs(mergedBlob, 'all_registers.pdf');
+    });
+};
+// Merge all registers into one PDF, sectioned by institution
+function generateMergedPDF(registers, cb) {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' });
+    let y = 40;
+    doc.setFontSize(18);
+    doc.text('All Registers', 40, y);
+    y += 30;
+    registers.forEach((reg, idx) => {
+        if (idx > 0) {
+            doc.addPage();
+            y = 40;
+        }
+        doc.setFontSize(16);
+        doc.text(reg.name || reg.coach.institution || 'Student Attendance Register', 40, y);
+        y += 30;
+        doc.setFontSize(12);
+        doc.text(`Coach: ${reg.coach.name || ''}`, 40, y);
+        doc.text(`Institution: ${reg.coach.institution || ''}`, 250, y);
+        doc.text(`Activity: ${reg.coach.activity || ''}`, 500, y);
+        y += 30;
+        // Calculate weekly pay and total pay
+        let weeklyPays = [];
+        let totalPay = 0;
+        for (let w = 0; w < WEEKS; w++) {
+            const presentCount = reg.students.filter(s => s.attendance[w]).length;
+            let weekPay = 0;
+            if (presentCount > 0) {
+                weekPay = calculateCoachEarning(presentCount);
+            }
+            weeklyPays.push(weekPay);
+            totalPay += weekPay;
+        }
+        doc.setFontSize(12);
+        doc.text('Weekly Pay:', 40, y);
+        y += 8;
+        doc.autoTable({
+            head: [['Week', 'Pay (KES)']],
+            body: weeklyPays.map((p, i) => [`Week ${i+1}`, p]),
+            startY: y,
+            theme: 'grid',
+            styles: { fontSize: 10, cellPadding: 2 },
+            headStyles: { fillColor: [220, 220, 220] },
+            margin: { left: 40, right: 40 },
+            tableWidth: 'auto',
+        });
+        y = doc.lastAutoTable.finalY + 8;
+        doc.text(`Total Pay: KES ${totalPay}`, 40, y);
+        y += 16;
+        const headers = ['Position', 'Student Name', ...Array.from({length: WEEKS}, (_, i) => `W${i+1}`)];
+        const rows = reg.students.map((s, idx) => [idx + 1, s.name || '', ...s.attendance.map(a => a ? '✔' : '')]);
+        doc.autoTable({
+            head: [headers],
+            body: rows,
+            startY: y,
+            theme: 'grid',
+            styles: { fontSize: 9, cellPadding: 2 },
+            headStyles: { fillColor: [220, 220, 220] },
+            bodyStyles: { textColor: [0, 0, 0] },
+            didParseCell: function (data) {
+                if (data.cell.raw === '✔') {
+                    data.cell.styles.textColor = [0, 128, 0];
+                    data.cell.styles.fontStyle = 'bold';
+                }
+            },
+            margin: { left: 40, right: 40 },
+            tableWidth: 'auto',
+        });
+        y = doc.lastAutoTable.finalY + 20;
+    });
+    doc.save = () => {};
+    doc.output('blob').then(cb);
+}
+window.onload = function() {
+    if (!getAllRegisters().length) {
+        addNewRegister();
+    } else {
+        renderNavBar();
+        renderRegister();
+    }
+};
+(function loadAutoTable() {
+    const script = document.createElement('script');
+    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js';
+    document.body.appendChild(script);
+})();
+// Navbar toggler functionality (for custom toggling)
+document.getElementById('navbarToggler').onclick = function() {
+    const nav = document.getElementById('navbarNav');
+    nav.classList.toggle('show');
+};
+// PWA manifest and service worker registration
+if ('serviceWorker' in navigator) {
+    window.addEventListener('load', function() {
+        navigator.serviceWorker.register('service-worker.js');
+    });
+}
+// Declare deferredPrompt only once for install app logic
+let deferredPrompt = null;
+// Add footer with Refresh & Clear and Install App buttons, and status message
+const existingNavRefreshBtn = document.getElementById('refreshBtn');
+if (existingNavRefreshBtn) existingNavRefreshBtn.remove();
+let footer = document.getElementById('appFooter');
+if (!footer) {
+    footer = document.createElement('footer');
+    footer.id = 'appFooter';
+    footer.style = 'width:100%;text-align:center;padding:1.5rem 0;background:#f8f9fa;position:fixed;bottom:0;left:0;z-index:1000;box-shadow:0 -2px 8px #0001;display:flex;flex-direction:column;align-items:center;gap:0.5rem;';
+    document.body.appendChild(footer);
+}
+footer.innerHTML = '';
+const btnRow = document.createElement('div');
+btnRow.style = 'display:flex;gap:1rem;justify-content:center;align-items:center;';
+const refreshBtn = document.createElement('button');
+refreshBtn.className = 'btn btn-danger';
+refreshBtn.textContent = 'Refresh & Clear';
+refreshBtn.id = 'refreshBtn';
+refreshBtn.onclick = function() {
+    if (confirm('Are you sure you want to clear all register data and refresh? This cannot be undone.')) {
+        localStorage.clear();
+        location.reload();
+    }
+};
+btnRow.appendChild(refreshBtn);
+// Install App button
+const installBtn = document.createElement('button');
+installBtn.className = 'btn btn-info';
+installBtn.textContent = 'Install App';
+installBtn.style.display = 'none';
+installBtn.onclick = function() {
+    if (deferredPrompt) {
+        deferredPrompt.prompt();
+        deferredPrompt.userChoice.then((choiceResult) => {
+            if (choiceResult.outcome === 'accepted') {
+                installBtn.style.display = 'none';
+            }
+            deferredPrompt = null;
+        });
+    }
+};
+btnRow.appendChild(installBtn);
+footer.appendChild(btnRow);
+// Status message
+const statusMsg = document.createElement('div');
+statusMsg.id = 'footerStatusMsg';
+statusMsg.style = 'font-size:1rem;color:#1976d2;font-weight:500;';
+footer.appendChild(statusMsg);
+function updateFooterStatus() {
+    if (navigator.onLine) {
+        statusMsg.textContent = 'To transform every sport talent into a skill.';
+    } else {
+        statusMsg.textContent = 'Offline';
+    }
+}
+window.addEventListener('online', updateFooterStatus);
+window.addEventListener('offline', updateFooterStatus);
+updateFooterStatus();
+// Listen for install prompt
+window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    deferredPrompt = e;
+    installBtn.style.display = 'inline-block';
+});
+</script>
+</body>
+</html> 
